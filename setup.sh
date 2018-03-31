@@ -1,7 +1,9 @@
 #!/bin/bash
 
 
+source config.sh
 
+cat conf/sendip.py | sed s/\\[destination\\]/${EMAIL_IP_DEST}/g | sed s/\\[source\\]/${EMAIL_IP_SOURCE}/g | sed s/\\[source_email_password\\]/${EMAIL_IP_SOURCE_PWD}/g | tee sendip.py
 
 
 
@@ -101,5 +103,5 @@ EOF
 }
 
 
-install_emailip
+#install_emailip
 
