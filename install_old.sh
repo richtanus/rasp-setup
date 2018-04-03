@@ -339,7 +339,7 @@ function update_system_packages() {
 function install_dependencies() {
     install_log "Installing required packages"
     #sudo apt-get install lighttpd $php_package git hostapd dnsmasq || install_error "Unable to install dependencies"
-    sudo apt-get install apache2 php7.0 php7.0-cgi git hostapd dnsmasq || install_error "Unable to install dependencies"
+    sudo apt-get install apache2 php7.0 php7.0-cgi mysql-server mysql-client phpmyadmin samba git hostapd dnsmasq || install_error "Unable to install dependencies"
 }
 
 install_raspap
