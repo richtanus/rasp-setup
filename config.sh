@@ -15,6 +15,7 @@ EMAIL_IP_SOURCE_PWD="your_source_gmail_pwd"
 NEW_USER="nancy"
 NEW_USER_PWD="111111"
 
+NEW_DB_ROOT_PWD="111111"
 NEW_DB_USER="gavin"
 NEW_DB_USER_PWD="111111"
 

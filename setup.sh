@@ -15,6 +15,12 @@ function update_hostname() {
 }
 
 
+function update_system_packages() {
+    install_log "Updating sources"
+    sudo apt-get update || install_error "Unable to update package list"
+}
+
+
 # Set up default configuration
 function default_configuration() {
     install_log "Setting up hostapd"
@@ -94,6 +100,18 @@ function check_for_old_configs() {
     fi
 }
 
+# Move configuration file to the correct location
+function move_config_file() {
+    if [ ! -d "$raspap_dir" ]; then
+        install_error "'$raspap_dir' directory doesn't exist"
+    fi
+
+    install_log "Moving configuration file to '$raspap_dir'"
+    sudo mv "$webroot_dir"/raspap.php "$raspap_dir" || install_error "Unable to move files to '$raspap_dir'"
+    sudo chown -R $raspap_user:$raspap_user "$raspap_dir" || install_error "Unable to change file ownership for '$raspap_dir'"
+}
+
+
 # Fetches latest files from github to webroot
 function download_latest_files() {
     if [ -d "$webroot_dir" ]; then
@@ -121,6 +139,76 @@ function change_file_ownership() {
     sudo chown -R $raspap_user:$raspap_user "$webroot_dir" || install_error "Unable to change file ownership for '$webroot_dir'"
 }
 
+# Generate logging enable/disable files for hostapd
+function create_logging_scripts() {
+    install_log "Creating logging scripts"
+    sudo mkdir $raspap_dir/hostapd || install_error "Unable to create directory '$raspap_dir/hostapd'"
+
+    # Move existing shell scripts 
+    sudo mv $webroot_dir/installers/*log.sh $raspap_dir/hostapd || install_error "Unable to move logging scripts"
+}
+
+# Adds www-data user to the sudoers file with restrictions on what the user can execute
+function patch_system_files() {
+    # add symlink to prevent wpa_cli cmds from breaking with multiple wlan interfaces
+    install_log "symlinked wpa_supplicant hooks for multiple wlan interfaces"
+    sudo ln -s /usr/share/dhcpcd/hooks/10-wpa_supplicant /etc/dhcp/dhclient-enter-hooks.d/
+    # Set commands array
+    cmds=(
+        "/sbin/ifdown"
+        "/sbin/ifup"
+        "/bin/cat /etc/wpa_supplicant/wpa_supplicant.conf"
+        "/bin/cat /etc/wpa_supplicant/wpa_supplicant-wlan0.conf"
+        "/bin/cat /etc/wpa_supplicant/wpa_supplicant-wlan1.conf"
+        "/bin/cp /tmp/wifidata /etc/wpa_supplicant/wpa_supplicant.conf"
+        "/bin/cp /tmp/wifidata /etc/wpa_supplicant/wpa_supplicant-wlan0.conf"
+        "/bin/cp /tmp/wifidata /etc/wpa_supplicant/wpa_supplicant-wlan1.conf"
+        "/sbin/wpa_cli scan_results"
+        "/sbin/wpa_cli scan"
+        "/sbin/wpa_cli reconfigure"
+        "/bin/cp /tmp/hostapddata /etc/hostapd/hostapd.conf"
+        "/etc/init.d/hostapd start"
+        "/etc/init.d/hostapd stop"
+        "/etc/init.d/dnsmasq start"
+        "/etc/init.d/dnsmasq stop"
+        "/bin/cp /tmp/dhcpddata /etc/dnsmasq.conf"
+        "/sbin/shutdown -h now"
+        "/sbin/reboot"
+        "/sbin/ip link set wlan0 down"
+        "/sbin/ip link set wlan0 up"
+        "/sbin/ip -s a f label wlan0"
+        "/sbin/ip link set wlan1 down"
+        "/sbin/ip link set wlan1 up"
+        "/sbin/ip -s a f label wlan1"
+        "/bin/cp /etc/raspap/networking/dhcpcd.conf /etc/dhcpcd.conf"
+        "/etc/raspap/hostapd/enablelog.sh"
+        "/etc/raspap/hostapd/disablelog.sh"
+    )
+
+    # Check if sudoers needs patching
+    if [ $(sudo grep -c www-data /etc/sudoers) -ne 28 ]
+    then
+        # Sudoers file has incorrect number of commands. Wiping them out.
+        install_log "Cleaning sudoers file"
+        sudo sed -i '/www-data/d' /etc/sudoers
+        install_log "Patching system sudoers file"
+        # patch /etc/sudoers file
+        for cmd in "${cmds[@]}"
+        do
+            sudo_add $cmd
+            IFS=$'\n'
+        done
+    else
+        install_log "Sudoers file already patched"
+    fi
+}
+
+function install_dependencies() {
+    install_log "Installing required packages"
+    #sudo apt-get install lighttpd $php_package git hostapd dnsmasq || install_error "Unable to install dependencies"
+    sudo apt-get install apache2 php7.0 php7.0-cgi libapache2-mod-php7.0 mysql-server mysql-client phpmyadmin samba git hostapd dnsmasq || install_error "Unable to install dependencies"
+}
+
 
 function add_user() {
     sudo adduser --disabled-password --gecos "" ${NEW_USER}
@@ -129,25 +217,82 @@ function add_user() {
     
     #delete user
     #sudo userdel -r ${NEW_USER}
-}
 
-
-function setup_dev_folder() {
     mkdir /home/${NEW_USER}/${HOME_DEV_FOLDER}
     chown ${NEW_USER} /home/${NEW_USER}/${HOME_DEV_FOLDER}
     chgrp ${NEW_USER} /home/${NEW_USER}/${HOME_DEV_FOLDER}
-}
-
-
-function install_dependencies() {
-    install_log "Installing required packages"
-    #sudo apt-get install lighttpd $php_package git hostapd dnsmasq || install_error "Unable to install dependencies"
-    sudo apt-get install apache2 php7.0 php7.0-cgi libapache2-mod-php7.0 mysql-server mysql-client phpmyadmin samba git hostapd dnsmasq || install_error "Unable to install dependencies"
 }
 
 function setup_samba_user() {
     echo -ne "${NEW_USER_PWD}\n${NEW_USER_PWD}\n" | sudo smbpasswd -a ${NEW_USER}
 }
 
+function setup_mysql_access() {
+    sudo mysqladmin --user=root password "${NEW_DB_ROOT_PWD}"
+    sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "CREATE USER '${NEW_DB_USER}'@'localhost' IDENTIFIED BY '${NEW_DB_USER_PWD}';"
+    sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "CREATE USER '${NEW_DB_USER}'@'%' IDENTIFIED BY '${NEW_DB_USER_PWD}';"
+    sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "GRANT ALL PRIVILEGES ON *.* TO '${NEW_DB_USER}'@'localhost' REQUIRE NONE WITH GRANT OPTION MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;"
+    sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "GRANT ALL PRIVILEGES ON *.* TO '${NEW_DB_USER}'@'%' REQUIRE NONE WITH GRANT OPTION MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;"
+    sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "FLUSH PRIVILEGES;"
+}
 
-create_raspap_directories
+function setup_apache_vhost() {
+    
+    # setup my project 
+    git clone https://github.com/gavinttla/ymxads /tmp/ymxads || install_error "Unable to download files from github"
+    sudo mv /tmp/ymxads /home/${NEW_USER}/${HOME_DEV_FOLDER}/
+    chown -R ${NEW_USER} /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads
+    chgrp -R ${NEW_USER} /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads
+    ln -s /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads /var/www/ymxads
+
+    sudo cp conf/vhost.conf /etc/apache2/sites-available/
+    sudo a2ensite vhost
+    sudo service apache2 restart
+}
+
+
+function next_step() {
+    echo -n "Please ocnfirm to go to next step [y/n]: "
+    read answer
+    if [[ $answer != "y" ]]; then
+        echo "start with next step."
+    fi
+}
+
+
+function install_raspap() {
+    next_step
+    update_system_packages
+    next_step
+    install_dependencies
+    next_step
+    create_raspap_directories
+    next_step
+    check_for_old_configs
+    next_step
+    download_latest_files
+    next_step
+    change_file_ownership
+    next_step
+    create_logging_scripts
+    next_step
+    move_config_file
+    next_step
+    install_sendip
+    next_step
+    default_configuration
+    next_step
+    patch_system_files
+    next_step
+    add_user
+    next_step
+    setup_samba_user
+    next_step
+    setup_mysql_access
+    next_step
+    setup_apache_vhost
+
+
+}
+
+install_raspap
