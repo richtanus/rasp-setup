@@ -13,7 +13,8 @@ function install_sendip() {
 
 function update_hostname() {
     install_log "Updating hostname"
-
+    sudo sed -i "s/raspberrypi/${NEW_HOSTNAME}/g" /etc/hostname
+    sudo sed -i "s/raspberrypi/${NEW_HOSTNAME}/g" /etc/hosts
 }
 
  
@@ -311,6 +312,8 @@ function install_raspap() {
     setup_mysql_access
     next_step
     setup_apache_vhost
+    next_step
+    update_hostname
 }
 
 install_raspap

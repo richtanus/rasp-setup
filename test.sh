@@ -35,6 +35,12 @@ function setup_mysql() {
 	sudo sed -i "s/127\.0\.0\.1/0\.0\.0\.0/g" /etc/mysql/mariadb.conf.d/50-server.cnf
 }
 
-setup_mysql
+function update_hostname() {
+    install_log "Updating hostname"
+    sudo sed -i "s/raspberrypi/${NEW_HOSTNAME}/g" /etc/hostname
+    sudo sed -i "s/raspberrypi/${NEW_HOSTNAME}/g" /etc/hosts
+}
+
+update_hostname
 
 
