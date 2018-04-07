@@ -6,15 +6,17 @@ source config.sh
 
 function install_sendip() {
     # replace variable fron config.sh
-    cat conf/sendip.py | sed s/\\[destination\\]/${EMAIL_IP_DEST}/g | sed s/\\[source\\]/${EMAIL_IP_SOURCE}/g | sed s/\\[source_email_password\\]/${EMAIL_IP_SOURCE_PWD}/g | tee sendip.py
+    install_log "Setting up sendip"
+    cat conf/sendip.py | sed s/\\[destination\\]/${EMAIL_IP_DEST}/g | sed s/\\[source\\]/${EMAIL_IP_SOURCE}/g | sed s/\\[source_email_password\\]/${EMAIL_IP_SOURCE_PWD}/g | tee /home/pi/sendip.py
 }
 
 
 function update_hostname() {
-	
+    install_log "Updating hostname"
+
 }
 
-
+ 
 function update_system_packages() {
     install_log "Updating sources"
     sudo apt-get update || install_error "Unable to update package list"
@@ -203,6 +205,11 @@ function patch_system_files() {
     fi
 }
 
+function sudo_add() {
+    sudo bash -c "echo \"www-data ALL=(ALL) NOPASSWD:$1\" | (EDITOR=\"tee -a\" visudo)" \
+        || install_error "Unable to patch /etc/sudoers"
+}
+
 function install_dependencies() {
     install_log "Installing required packages"
     #sudo apt-get install lighttpd $php_package git hostapd dnsmasq || install_error "Unable to install dependencies"
@@ -211,6 +218,7 @@ function install_dependencies() {
 
 
 function add_user() {
+    install_log "adding user account ${NEW_USER}"
     sudo adduser --disabled-password --gecos "" ${NEW_USER}
     echo ${NEW_USER}:${NEW_USER_PWD} | sudo chpasswd
     sudo adduser ${NEW_USER} sudo
@@ -224,32 +232,44 @@ function add_user() {
 }
 
 function setup_samba_user() {
+    install_log "Setuping up samba password"
     echo -ne "${NEW_USER_PWD}\n${NEW_USER_PWD}\n" | sudo smbpasswd -a ${NEW_USER}
 }
 
 function setup_mysql_access() {
+    install_log "setuping mysql access"
     sudo mysqladmin --user=root password "${NEW_DB_ROOT_PWD}"
     sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "CREATE USER '${NEW_DB_USER}'@'localhost' IDENTIFIED BY '${NEW_DB_USER_PWD}';"
     sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "CREATE USER '${NEW_DB_USER}'@'%' IDENTIFIED BY '${NEW_DB_USER_PWD}';"
     sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "GRANT ALL PRIVILEGES ON *.* TO '${NEW_DB_USER}'@'localhost' REQUIRE NONE WITH GRANT OPTION MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;"
     sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "GRANT ALL PRIVILEGES ON *.* TO '${NEW_DB_USER}'@'%' REQUIRE NONE WITH GRANT OPTION MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0;"
     sudo mysql -uroot -p${NEW_DB_ROOT_PWD} -e "FLUSH PRIVILEGES;"
+    #need to allow access from other ip
+    sudo sed -i "s/127\.0\.0\.1/0\.0\.0\.0/g" /etc/mysql/mariadb.conf.d/50-server.cnf
+    sudo service mysql restart
 }
 
 function setup_apache_vhost() {
-    
+    install_log "setuping apache vhost"
     # setup my project 
     git clone https://github.com/gavinttla/ymxads /tmp/ymxads || install_error "Unable to download files from github"
     sudo mv /tmp/ymxads /home/${NEW_USER}/${HOME_DEV_FOLDER}/
     chown -R ${NEW_USER} /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads
     chgrp -R ${NEW_USER} /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads
+    chmod 777 -R /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads/storage
+    chmod 777 -R /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads/bootstrap/cache
     ln -s /home/${NEW_USER}/${HOME_DEV_FOLDER}/ymxads /var/www/ymxads
 
     sudo cp conf/vhost.conf /etc/apache2/sites-available/
     sudo a2ensite vhost
+    sudo a2enmod rewrite
     sudo service apache2 restart
 }
 
+
+function setup_laravel_project() {
+    install_log "setuping apache vhost"
+}
 
 function next_step() {
     echo -n "Please ocnfirm to go to next step [y/n]: "
@@ -291,8 +311,6 @@ function install_raspap() {
     setup_mysql_access
     next_step
     setup_apache_vhost
-
-
 }
 
 install_raspap
