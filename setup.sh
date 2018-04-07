@@ -4,6 +4,18 @@
 source config.sh
 
 
+# Outputs a RaspAP Install log line
+function install_log() {
+    echo -e "\033[1;32mRaspAP Install: $*\033[m"
+}
+
+# Outputs a RaspAP Install Error log line and exits with status code 1
+function install_error() {
+    echo -e "\033[1;37;41mRaspAP Install Error: $*\033[m"
+    exit 1
+}
+
+
 function install_sendip() {
     # replace variable fron config.sh
     install_log "Setting up sendip"

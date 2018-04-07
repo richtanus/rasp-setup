@@ -8,16 +8,16 @@ if [[ $answer != "y" ]]; then
 fi
 
 
-EMAIL_IP_DEST="your_dest_gmail" #default all using gmail.com, NOT include the domain '@gmail.com'
-EMAIL_IP_SOURCE="your_source_gmail"
-EMAIL_IP_SOURCE_PWD="your_source_gmail_pwd"
+EMAIL_IP_DEST="richardtanus" #default all using gmail.com, NOT include the domain '@gmail.com'
+EMAIL_IP_SOURCE="latom76"
+EMAIL_IP_SOURCE_PWD="aaaa1111"
 
-NEW_USER="nancy"
-NEW_USER_PWD="111111"
+NEW_USER="gavin"
+NEW_USER_PWD="gavin22"
 
-NEW_DB_ROOT_PWD="111111"
+NEW_DB_ROOT_PWD="gavin22"
 NEW_DB_USER="gavin"
-NEW_DB_USER_PWD="111111"
+NEW_DB_USER_PWD="gavin22"
 
 NEW_HOSTNAME="ggdev"
 
